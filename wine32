@@ -1,0 +1,6 @@
+#!/bin/sh
+# wine32 PROGRAM ARGS...: run a 32-bit ARM Windows program on the 32-bit ARM Wine, in the
+# prefix /opt/wine32 (wine is the 64-bit one the compiler runs on).
+export WINEPREFIX=/opt/wine32
+/usr/lib/wine/wineserver32 -p5 2>/dev/null
+exec /usr/lib/wine/wine "$@"

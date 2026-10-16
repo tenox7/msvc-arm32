@@ -16,6 +16,8 @@ The image contains no Microsoft software. `msvc-setup` downloads MSVC, its ARM32
 
 Tools: `cl link lib dumpbin editbin armasm cvtres nmake undname rc mt`, plus `clang` (`--target=thumbv7-pc-windows-msvc`) and `lldb` (reads PDB). `INCLUDE` and `LIB` point at MSVC and the SDK; `MSVC_ENV=0` leaves them unset. Paths are relative to `/src` or absolute.
 
+`wine32 hello.exe` runs a 32-bit ARM Windows program on the 32-bit ARM Wine (prefix `/opt/wine32`); the host must run 32-bit ARM Linux programs, natively or through QEMU binfmt (Docker Desktop has it). `mtools`, `dosfstools` and `sfdisk` make disk images.
+
 ## Backup and mirror
 
     docker run --rm -e ACCEPT_MSVC_LICENSE=yes -v /path/to/backup:/backup tenox7/msvc-arm32 msvc-backup /backup
