@@ -16,9 +16,15 @@ The image contains no Microsoft software. `msvc-setup` downloads MSVC, its ARM32
 
 Tools: `cl link lib dumpbin editbin armasm cvtres nmake undname rc mt`, plus `clang` (`--target=thumbv7-pc-windows-msvc`) and `lldb` (reads PDB). `INCLUDE` and `LIB` point at MSVC and the SDK; `MSVC_ENV=0` leaves them unset. Paths are relative to `/src` or absolute.
 
-## Backup
+## Backup and mirror
 
-`msvc-backup DIR` saves every ARM32 MSVC and SDK download to DIR. `MSVC_MIRROR=DIR` makes `msvc-setup` install from it, with no network.
+    docker run --rm -e ACCEPT_MSVC_LICENSE=yes -v /path/to/backup:/backup tenox7/msvc-arm32 msvc-backup /backup
+
+This saves every ARM32 MSVC and Windows SDK download to `/path/to/backup`, sha256 checked (1.2 GB).
+
+    docker run --rm -e ACCEPT_MSVC_LICENSE=yes -e MSVC_MIRROR=/backup -v /path/to/backup:/backup:ro -v msvc-arm32:/opt/msvc tenox7/msvc-arm32 msvc-setup
+
+`MSVC_MIRROR` makes `msvc-setup` install from that backup instead of from Microsoft, with no network needed.
 
 ## Build
 

@@ -3,5 +3,6 @@
 # install MSVC on first use, then run the command.
 [ $# -gt 0 ] || set -- help
 case $1 in help|-h|--help) exec cat /usr/local/share/msvc-arm32/README.md ;; esac
-[ -f "${MSVC:-/opt/msvc}/.installed" ] || [ "${ACCEPT_MSVC_LICENSE:-}" != yes ] || [ "$1" = msvc-setup ] || msvc-setup || exit
+case $1 in msvc-setup|msvc-backup) exec "$@" ;; esac
+[ -f "${MSVC:-/opt/msvc}/.installed" ] || [ "${ACCEPT_MSVC_LICENSE:-}" != yes ] || msvc-setup || exit
 exec "$@"

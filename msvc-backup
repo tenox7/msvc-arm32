@@ -4,8 +4,14 @@
 # ATL and MFC; the 14.29 (VS 2019), 14.16 (VS 2017) and 14.0 (VS 2015) ARM32 toolsets;
 # and the whole Windows 10 SDK 10.0.19041. Files go to DIR/packages/<package id>/, with
 # the channel and manifest and DIR/SHA256SUMS. msvc-setup with MSVC_MIRROR=DIR installs
-# from it. Rerunning skips the files already saved.
+# from it. Rerunning skips the files already saved. Needs ACCEPT_MSVC_LICENSE=yes, as
+# msvc-setup does.
 set -eu
+if [ "${ACCEPT_MSVC_LICENSE:-}" != yes ]; then
+  echo "msvc-backup: set ACCEPT_MSVC_LICENSE=yes to download MSVC and the Windows SDK from Microsoft," >&2
+  echo "accepting the Visual Studio Build Tools license: https://go.microsoft.com/fwlink/?LinkId=2179911" >&2
+  exit 2
+fi
 D=${1:?usage: msvc-backup DIR}
 CHANNEL=${CHANNEL:-https://aka.ms/vs/17/release/channel}
 mkdir -p "$D/packages"
