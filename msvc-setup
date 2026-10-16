@@ -1,0 +1,67 @@
+#!/bin/sh
+# msvc-setup: download from Microsoft into $MSVC (default /opt/msvc) MSVC 14.44 for ARM32,
+# the arm64- or x64-hosted toolset by the host, with its headers and ARM32 run-time
+# libraries, and the ARM32 headers, libraries and tools (rc, mt) of the Windows 10 SDK;
+# SDK=0 skips the SDK; MSVC_MIRROR=DIR installs from a msvc-backup DIR instead.
+# Needs ACCEPT_MSVC_LICENSE=yes, which accepts the Visual Studio Build Tools license
+# terms (https://go.microsoft.com/fwlink/?LinkId=2179911).
+set -eu
+D=${MSVC:-/opt/msvc}
+if [ "${ACCEPT_MSVC_LICENSE:-}" != yes ]; then
+  echo "msvc-setup: set ACCEPT_MSVC_LICENSE=yes to download MSVC and the Windows SDK from Microsoft," >&2
+  echo "accepting the Visual Studio Build Tools license: https://go.microsoft.com/fwlink/?LinkId=2179911" >&2
+  exit 2
+fi
+CHANNEL=${CHANNEL:-https://aka.ms/vs/17/release/channel}
+V=${MSVC_VERSION:-14.44.17.14}
+P=${SDK_PACKAGE:-Win10SDK_10.0.19041}
+case $(uname -m) in
+aarch64) H=ARM64 h=arm64 ;;
+x86_64) H=X64 h=x64 ;;
+*) echo "msvc-setup: no MSVC for a $(uname -m) host" >&2; exit 1 ;;
+esac
+T=$(mktemp -d)
+trap 'rm -rf "$T"' EXIT
+if [ -n "${MSVC_MIRROR:-}" ]; then
+  cp "$MSVC_MIRROR/manifest.json" $T/vs.json
+else
+  curl -sSfL "$CHANNEL" -o $T/channel.json
+  curl -sSfL "$(jq -r '.channelItems[] | select(.type == "Manifest") | .payloads[0].url' $T/channel.json)" -o $T/vs.json
+fi
+
+echo ">> MSVC $V, host $h, target ARM"
+CACHE=$T/vsix MIRROR=${MSVC_MIRROR:-} "$(dirname "$0")"/fetch-msvc.sh $T/vs.json "$D" \
+  Microsoft.VC.$V.Tools.Host$H.TargetARM.base Microsoft.VC.$V.Tools.Host$H.TargetARM.Res.base \
+  Microsoft.VC.$V.CRT.Headers.base \
+  Microsoft.VC.$V.CRT.arm.Desktop.base Microsoft.VC.$V.CRT.arm.Store.base
+
+# payload FILE OUT: a file of the SDK package, its sha256 checked
+payload() {
+  jq -r --arg p "$P" --arg f "Installers\\$1" '.packages[] | select(.id == $p) | .payloads[]
+    | select(.fileName == $f) | "\(.sha256) \(.url)"' $T/vs.json | head -1 > $T/p
+  read -r sha url < $T/p || { echo "msvc-setup: $P has no $1" >&2; exit 1; }
+  if [ -n "${MSVC_MIRROR:-}" ]; then cp "$MSVC_MIRROR/packages/$P/Installers/$1" "$2"; else curl -sSfL "$url" -o "$2"; fi
+  echo "$sha  $2" | sha256sum -c --quiet -
+}
+if [ "${SDK:-1}" != 0 ]; then
+  echo ">> $P: ARM32 headers and libraries, $h tools"
+  mkdir -p $T/sdk $T/x
+  for m in "Windows SDK Desktop Headers x86-x86_en-us.msi" "Windows SDK Desktop Headers arm-x86_en-us.msi" \
+           "Windows SDK for Windows Store Apps Headers-x86_en-us.msi" "Universal CRT Headers Libraries and Sources-x86_en-us.msi" \
+           "Windows SDK Desktop Libs arm-x86_en-us.msi" "Windows SDK for Windows Store Apps Libs-x86_en-us.msi" \
+           "Windows SDK for Windows Store Apps Tools-x86_en-us.msi"; do
+    payload "$m" "$T/sdk/$m"
+    msiinfo export "$T/sdk/$m" Media | tr -d '\r' | awk -F'\t' 'NR > 3 && $4 != "" && $4 !~ /^#/ {print $4}' > $T/cabs
+    while read -r c; do [ -f "$T/sdk/$c" ] || payload "$c" "$T/sdk/$c"; done < $T/cabs
+    msiextract -C $T/x "$T/sdk/$m" > /dev/null
+    echo "$m"
+  done
+  k="$T/x/Program Files/Windows Kits/10"
+  rm -rf "$k/Catalogs" "$k/DesignTime" "$k/Source" "$k"/Include/*/cppwinrt "$k"/Lib/*/ucrt_enclave
+  for a in x86 x64 arm64; do rm -rf "$k"/Lib/*/ucrt/$a "$k"/Lib/*/um/$a; done
+  for a in x86 x64 arm64 arm; do [ $a = $h ] || rm -rf "$k"/bin/*/$a; done
+  mkdir -p "$D/kits"
+  cp -R "$k/." "$D/kits/"
+fi
+touch "$D/.installed"
+echo ">> installed in $D"

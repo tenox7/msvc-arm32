@@ -1,0 +1,30 @@
+#!/bin/sh
+# msvc-backup DIR: save from Microsoft into DIR, sha256 checked, everything msvc-setup
+# downloads and the rest of ARM32 MSVC: 14.44 for arm64, x64 and x86 hosts with its CRT,
+# ATL and MFC; the 14.29 (VS 2019), 14.16 (VS 2017) and 14.0 (VS 2015) ARM32 toolsets;
+# and the whole Windows 10 SDK 10.0.19041. Files go to DIR/packages/<package id>/, with
+# the channel and manifest and DIR/SHA256SUMS. msvc-setup with MSVC_MIRROR=DIR installs
+# from it. Rerunning skips the files already saved.
+set -eu
+D=${1:?usage: msvc-backup DIR}
+CHANNEL=${CHANNEL:-https://aka.ms/vs/17/release/channel}
+mkdir -p "$D/packages"
+curl -sSfL "$CHANNEL" -o "$D/channel.json"
+curl -sSfL "$(jq -r '.channelItems[] | select(.type == "Manifest") | .payloads[0].url' "$D/channel.json")" -o "$D/manifest.json"
+V='^Microsoft\.VC\.14\.44\.17\.14\.(Tools\.Host(ARM64|X64|x86|X86)\.Target(ARM|arm)(\.Res)?|CRT\.(Headers|Source)|CRT\.(arm|Redist\.arm)\..*|ATL\.(ARM|Headers)(\.Spectre)?|MFC\.(ARM|MBCS\.arm)(\.Debug)?(\.Spectre)?|MFC\.Headers)\.base$'
+V="$V"'|^Microsoft\.VC\.14\.29\.16\.11\.(Tools\.Host(X64|x86|X86)\.Target(ARM|arm)(\.Res)?|CRT\.(Headers|arm\.Desktop|arm\.Store))\.base$'
+V="$V"'|^Microsoft\.VisualC\.14\.16\.(Tools\.Host(X64|x86|X86)\.Target(ARM|arm)(\.Resources)?|CRT\.(Headers|arm\.Desktop|arm\.Store|Redist\.ARM))$'
+V="$V"'|^Microsoft\.VisualC\.140\.(Tools\.Host(X64|X86)\.TargetARM\.Msi(\.Resources)?|CRT\.(ARM\.Desktop|ARM\.Store|Redist\.ARM)\.Msi)$'
+V="$V"'|^Win10SDK_10\.0\.19041$'
+jq -r --arg re "$V" '.packages[] | select(.id | test($re)) | select(.language == null or .language == "neutral" or .language == "en-US")
+  | .id as $id | .payloads[]? | "\(.sha256) \($id) \(.url) \(.fileName)"' "$D/manifest.json" | sort -u > "$D/files.txt"
+echo ">> $(wc -l < "$D/files.txt") files, $(cut -d' ' -f2 "$D/files.txt" | sort -u | wc -l) packages"
+while read -r sha id url name; do
+  f="$D/packages/$id/$(printf '%s' "$name" | tr '\\' /)"
+  [ -s "$f" ] && echo "$sha  $f" | sha256sum -c --quiet - 2>/dev/null && continue
+  mkdir -p "$(dirname "$f")"
+  curl -sSfL "$url" -o "$f"
+  echo "$sha  $f" | sha256sum -c --quiet -
+done < "$D/files.txt"
+(cd "$D" && find . -type f ! -name SHA256SUMS ! -name '.nfs*' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+echo ">> saved in $D ($(du -sh "$D" | cut -f1))"

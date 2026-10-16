@@ -1,0 +1,7 @@
+*
+!msvc-setup
+!fetch-msvc.sh
+!wine-msvc
+!entrypoint
+!README.md
+!msvc-backup

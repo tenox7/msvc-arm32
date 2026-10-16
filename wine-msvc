@@ -1,0 +1,38 @@
+#!/bin/sh
+# wine-msvc TOOL ARGS...: run an MSVC ARM32 tool (cl, link, lib, dumpbin, armasm, editbin,
+# cvtres, nmake, undname) or a Windows SDK one (rc, mt) under Wine. An absolute Unix path,
+# alone or after an option (/Fo/abs, /I/abs, /out:/abs), becomes a Z: path. INCLUDE and LIB
+# name the MSVC and SDK directories unless already set; MSVC_ENV=0 sets neither.
+t=$1; shift
+M=${MSVC:-/opt/msvc}
+case $(uname -m) in aarch64) h=arm64 ;; *) h=x64 ;; esac
+b=$(ls -d $M/VC/Tools/MSVC/*/bin/Host$h/arm 2>/dev/null | tail -1)
+if [ -z "$b" ]; then
+  echo "msvc-arm32: MSVC is not installed in $M; run msvc-setup with ACCEPT_MSVC_LICENSE=yes (see help)" >&2
+  exit 2
+fi
+e=$b/$t.exe
+[ -f "$e" ] || e=$(ls $M/kits/bin/*/$h/$t.exe 2>/dev/null | tail -1)
+[ -n "$e" ] && [ -f "$e" ] || { echo "msvc-arm32: no tool $t" >&2; exit 127; }
+w() { printf 'Z:%s' "$1" | tr / '\\'; }
+if [ "${MSVC_ENV:-1}" != 0 ]; then
+  v=${b%/bin/*} s=$(ls $M/kits/Include 2>/dev/null | tail -1)
+  i=$(w $v/include) l=$(w $v/lib/arm)
+  if [ -n "$s" ]; then
+    for d in ucrt um shared winrt; do i="$i;$(w $M/kits/Include/$s/$d)"; done
+    for d in ucrt um; do l="$l;$(w $M/kits/Lib/$s/$d/arm)"; done
+  fi
+  export INCLUDE="${INCLUDE:-$i}" LIB="${LIB:-$l}"
+fi
+abs() { d=$(dirname "$1"); [ "$d" != / ] && [ -d "$d" ]; }
+for a; do
+  shift
+  case $a in
+  /*) if abs "$a"; then a="Z:$a"
+      else p=$(printf '%s' "$a" | sed -nE 's#^/[A-Za-z]+:?(/.*)$#\1#p'); [ -n "$p" ] && abs "$p" && a="${a%"$p"}Z:$p"; fi ;;
+  -*) p=$(printf '%s' "$a" | sed -nE 's#^-[A-Za-z]+:?(/.*)$#\1#p'); [ -n "$p" ] && abs "$p" && a="${a%"$p"}Z:$p" ;;
+  esac
+  set -- "$@" "$a"
+done
+export WINEDEBUG=${WINEDEBUG:--all} WINEDLLOVERRIDES="vcruntime140=n;vcruntime140_1=n;msvcp140=n"
+exec wine "$e" "$@"
